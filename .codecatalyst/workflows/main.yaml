@@ -1,14 +1,11 @@
 SchemaVersion: 1.0
 
-Name: Blog Application CI/CD Pipeline
-Description: Build, test, and deploy the blog application
+Name: Blog-Application-CICD-Pipeline
 
 Triggers:
   - Type: Push
     Branches:
       - main
-    Events:
-      - Push
 
 Actions:
   # Build Stage
@@ -16,43 +13,35 @@ Actions:
     Identifier: aws/build@v1
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
-      Steps:
-        - Name: BuildBackend
-          Commands:
-            - echo "Building backend Docker image..."
-            - cd backend
-            - docker build -t backend:latest .
-            - echo "Backend build completed"
-      Outputs:
-        - Name: BackendImage
-          Artifacts:
-            - Name: backend-image
+        - WorkflowSource
+    Outputs:
+        Artifacts:
+            - Name: backendimage
               Files:
                 - backend:latest
+    Configuration:
+        Steps:
+            - Run: echo "Building backend Docker image..."
+            - Run: cd backend
+            - Run: docker build -t backend:latest .
+            - Run: echo "Backend build completed"
 
   BuildFrontend:
     Identifier: aws/build@v1
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
-      Steps:
-        - Name: BuildFrontend
-          Commands:
-            - echo "Building frontend Docker image..."
-            - cd frontend
-            - docker build -t frontend:latest .
-            - echo "Frontend build completed"
-      Outputs:
-        - Name: FrontendImage
-          Artifacts:
-            - Name: frontend-image
+        - WorkflowSource
+    Outputs:
+        Artifacts:
+            - Name: frontendimage
               Files:
                 - frontend:latest
+    Configuration:
+        Steps:
+            - Run: echo "Building frontend Docker image..."
+            - Run: cd frontend
+            - Run: docker build -t frontend:latest .
+            - Run: echo "Frontend build completed"
 
   # Test Stage
   TestBackend:
@@ -61,17 +50,14 @@ Actions:
       - BuildBackend
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Configuration:
       Steps:
-        - Name: TestBackend
-          Commands:
-            - echo "Running backend tests..."
-            - cd backend
-            - pip install -r requirements.txt
-            - pytest tests/ -v --cov=app --cov-report=html
-            - echo "Backend tests completed"
+            - Run: echo "Running backend tests..."
+            - Run: cd backend
+            - Run: pip install -r requirements.txt
+            - Run: pytest tests/ -v --cov=app --cov-report=html
+            - Run: echo "Backend tests completed"
 
   TestFrontend:
     Identifier: aws/managed-test@v1
@@ -79,17 +65,14 @@ Actions:
       - BuildFrontend
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Configuration:
       Steps:
-        - Name: TestFrontend
-          Commands:
-            - echo "Running frontend tests..."
-            - cd frontend
-            - npm install
-            - npm test -- --watchAll=false --coverage
-            - echo "Frontend tests completed"
+            - Run: echo "Running frontend tests..."
+            - Run: cd frontend
+            - Run: npm install
+            - Run: npm test -- --watchAll=false --coverage
+            - Run: echo "Frontend tests completed"
 
   # Security Scan
   SecurityScan:
@@ -99,20 +82,17 @@ Actions:
       - BuildFrontend
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Configuration:
       Steps:
-        - Name: SecurityScan
-          Commands:
-            - echo "Running security scans..."
-            - cd backend
-            - pip install bandit safety
-            - bandit -r app/ -f json -o bandit-report.json || true
-            - safety check --json --output safety-report.json || true
-            - cd ../frontend
-            - npm audit --audit-level moderate || true
-            - echo "Security scans completed"
+            - Run: echo "Running security scans..."
+            - Run: cd backend
+            - Run: pip install bandit safety
+            - Run: bandit -r app/ -f json -o bandit-report.json || true
+            - Run: safety check --json --output safety-report.json || true
+            - Run: cd ../frontend
+            - Run: npm audit --audit-level moderate || true
+            - Run: echo "Security scans completed"
 
   # Push to ECR
   PushToECR:
@@ -124,30 +104,42 @@ Actions:
       - TestFrontend
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Configuration:
       Steps:
-        - Name: PushToECR
-          Commands:
-            - echo "Pushing images to ECR..."
-            - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
-            - docker tag backend:latest $ECR_REPOSITORY_URI/backend:latest
-            - docker tag frontend:latest $ECR_REPOSITORY_URI/frontend:latest
-            - docker push $ECR_REPOSITORY_URI/backend:latest
-            - docker push $ECR_REPOSITORY_URI/frontend:latest
-            - echo "Images pushed to ECR successfully"
+            - Run: echo "Pushing images to ECR..."
+            - Run: aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+            - Run: docker tag backend:latest $ECR_REPOSITORY_URI/backend:latest
+            - Run: docker tag frontend:latest $ECR_REPOSITORY_URI/frontend:latest
+            - Run: docker push $ECR_REPOSITORY_URI/backend:latest
+            - Run: docker push $ECR_REPOSITORY_URI/frontend:latest
+            - Run: echo "Images pushed to ECR successfully"
 
   # Deploy Infrastructure
   DeployInfrastructure:
     Identifier: aws/cfn-deploy@v1
     DependsOn:
       - PushToECR
+    Timeout: 15
+    Environment:
+      Name: production
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Artifacts:
+        - CloudFormation-artifact
+    Configuration:
+      name: blog-app-stack
+      region: us-west-2
+      template: infrastructure/cloudformation/main.yaml
+      no-execute-changeset: 0
+      fail-on-empty-changeset: 1
+      disable-rollback: 1
+      termination-protection: 1
+      timeout-in-minutes: 15
+      monitor-timeout-in-minutes: 15
+      tags: '[{"Key":"E","Value":"MyValue1"},{"Key":"MyKey2","Value":"MyValue2"}]'
+    
       StackName: blog-app-stack
       TemplateFile: infrastructure/cloudformation/main.yaml
       Capabilities: CAPABILITY_IAM
@@ -163,6 +155,9 @@ Actions:
           Value: production
         - Key: Application
           Value: blog-app
+    Configuration:
+        Steps:
+            - Run: "Echo publshing to ecr"
 
   # Deploy Application
   DeployApplication:
@@ -199,19 +194,3 @@ Actions:
             - pip install requests pytest
             - python -m pytest tests/integration/ -v
             - echo "Integration tests completed"
-
-Parameters:
-  DatabasePassword:
-    Type: Secret
-    Description: Database password for RDS instance
-  
-  ECRRepositoryUri:
-    Type: String
-    Description: ECR repository URI for container images
-    Default: ${{ Environment.ECR_REPOSITORY_URI }}
-
-Environment:
-  Name: production
-  Connections:
-    - Role: CodeCatalystWorkflowDevelopmentRole-123456789012
-      Name: AWSAccount 
