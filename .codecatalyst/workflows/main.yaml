@@ -1,0 +1,217 @@
+SchemaVersion: 1.0
+
+Name: Blog Application CI/CD Pipeline
+Description: Build, test, and deploy the blog application
+
+Triggers:
+  - Type: Push
+    Branches:
+      - main
+    Events:
+      - Push
+
+Actions:
+  # Build Stage
+  BuildBackend:
+    Identifier: aws/build@v1
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: BuildBackend
+          Commands:
+            - echo "Building backend Docker image..."
+            - cd backend
+            - docker build -t backend:latest .
+            - echo "Backend build completed"
+      Outputs:
+        - Name: BackendImage
+          Artifacts:
+            - Name: backend-image
+              Files:
+                - backend:latest
+
+  BuildFrontend:
+    Identifier: aws/build@v1
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: BuildFrontend
+          Commands:
+            - echo "Building frontend Docker image..."
+            - cd frontend
+            - docker build -t frontend:latest .
+            - echo "Frontend build completed"
+      Outputs:
+        - Name: FrontendImage
+          Artifacts:
+            - Name: frontend-image
+              Files:
+                - frontend:latest
+
+  # Test Stage
+  TestBackend:
+    Identifier: aws/managed-test@v1
+    DependsOn:
+      - BuildBackend
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: TestBackend
+          Commands:
+            - echo "Running backend tests..."
+            - cd backend
+            - pip install -r requirements.txt
+            - pytest tests/ -v --cov=app --cov-report=html
+            - echo "Backend tests completed"
+
+  TestFrontend:
+    Identifier: aws/managed-test@v1
+    DependsOn:
+      - BuildFrontend
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: TestFrontend
+          Commands:
+            - echo "Running frontend tests..."
+            - cd frontend
+            - npm install
+            - npm test -- --watchAll=false --coverage
+            - echo "Frontend tests completed"
+
+  # Security Scan
+  SecurityScan:
+    Identifier: aws/managed-test@v1
+    DependsOn:
+      - BuildBackend
+      - BuildFrontend
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: SecurityScan
+          Commands:
+            - echo "Running security scans..."
+            - cd backend
+            - pip install bandit safety
+            - bandit -r app/ -f json -o bandit-report.json || true
+            - safety check --json --output safety-report.json || true
+            - cd ../frontend
+            - npm audit --audit-level moderate || true
+            - echo "Security scans completed"
+
+  # Push to ECR
+  PushToECR:
+    Identifier: aws/build@v1
+    DependsOn:
+      - BuildBackend
+      - BuildFrontend
+      - TestBackend
+      - TestFrontend
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: PushToECR
+          Commands:
+            - echo "Pushing images to ECR..."
+            - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+            - docker tag backend:latest $ECR_REPOSITORY_URI/backend:latest
+            - docker tag frontend:latest $ECR_REPOSITORY_URI/frontend:latest
+            - docker push $ECR_REPOSITORY_URI/backend:latest
+            - docker push $ECR_REPOSITORY_URI/frontend:latest
+            - echo "Images pushed to ECR successfully"
+
+  # Deploy Infrastructure
+  DeployInfrastructure:
+    Identifier: aws/cfn-deploy@v1
+    DependsOn:
+      - PushToECR
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      StackName: blog-app-stack
+      TemplateFile: infrastructure/cloudformation/main.yaml
+      Capabilities: CAPABILITY_IAM
+      Parameters:
+        - ParameterKey: Environment
+          ParameterValue: production
+        - ParameterKey: DatabasePassword
+          ParameterValue: ${{ Parameters.DatabasePassword }}
+        - ParameterKey: ECRRepositoryUri
+          ParameterValue: ${{ Parameters.ECRRepositoryUri }}
+      Tags:
+        - Key: Environment
+          Value: production
+        - Key: Application
+          Value: blog-app
+
+  # Deploy Application
+  DeployApplication:
+    Identifier: aws/build@v1
+    DependsOn:
+      - DeployInfrastructure
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: DeployApplication
+          Commands:
+            - echo "Deploying application..."
+            - aws ecs update-service --cluster production-blog-cluster --service production-blog-backend-service --force-new-deployment
+            - aws ecs update-service --cluster production-blog-cluster --service production-blog-frontend-service --force-new-deployment
+            - echo "Application deployment completed"
+
+  # Integration Tests
+  IntegrationTests:
+    Identifier: aws/managed-test@v1
+    DependsOn:
+      - DeployApplication
+    Inputs:
+      Sources:
+        - Name: Source
+          Repository: Source
+          Branch: main
+      Steps:
+        - Name: IntegrationTests
+          Commands:
+            - echo "Running integration tests..."
+            - pip install requests pytest
+            - python -m pytest tests/integration/ -v
+            - echo "Integration tests completed"
+
+Parameters:
+  DatabasePassword:
+    Type: Secret
+    Description: Database password for RDS instance
+  
+  ECRRepositoryUri:
+    Type: String
+    Description: ECR repository URI for container images
+    Default: ${{ Environment.ECR_REPOSITORY_URI }}
+
+Environment:
+  Name: production
+  Connections:
+    - Role: CodeCatalystWorkflowDevelopmentRole-123456789012
+      Name: AWSAccount 
