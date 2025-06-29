@@ -17,8 +17,7 @@ Actions:
     Configuration:
         Steps:
             - Run: echo "Building backend Docker image..."
-            - Run: cd backend
-            - Run: docker build -t backend:latest .
+            - Run: docker build -t backend:latest -f backend/Dockerfile backend/
             - Run: echo "Backend build completed"
 
   BuildFrontend:
@@ -29,8 +28,7 @@ Actions:
     Configuration:
         Steps:
             - Run: echo "Building frontend Docker image..."
-            - Run: cd frontend
-            - Run: docker build -t frontend:latest .
+            - Run: docker build -t frontend:latest -f frontend/Dockerfile frontend/
             - Run: echo "Frontend build completed"
 
   # Test Stage
