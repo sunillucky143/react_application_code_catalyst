@@ -14,11 +14,6 @@ Actions:
     Inputs:
       Sources:
         - WorkflowSource
-    Outputs:
-        Artifacts:
-            - Name: backendimage
-              Files:
-                - TestEnv01/simple_react_app/backend:latest
     Configuration:
         Steps:
             - Run: echo "Building backend Docker image..."
@@ -31,11 +26,6 @@ Actions:
     Inputs:
       Sources:
         - WorkflowSource
-    Outputs:
-        Artifacts:
-            - Name: frontendimage
-              Files:
-                - frontend:latest
     Configuration:
         Steps:
             - Run: echo "Building frontend Docker image..."
