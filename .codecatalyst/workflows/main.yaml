@@ -126,38 +126,17 @@ Actions:
     Inputs:
       Sources:
         - WorkflowSource
-    Artifacts:
-        - CloudFormation-artifact
     Configuration:
       name: blog-app-stack
       region: us-west-2
       template: infrastructure/cloudformation/main.yaml
-      no-execute-changeset: 0
-      fail-on-empty-changeset: 1
-      disable-rollback: 1
-      termination-protection: 1
-      timeout-in-minutes: 15
-      monitor-timeout-in-minutes: 15
-      tags: '[{"Key":"E","Value":"MyValue1"},{"Key":"MyKey2","Value":"MyValue2"}]'
-    
-      StackName: blog-app-stack
-      TemplateFile: infrastructure/cloudformation/main.yaml
-      Capabilities: CAPABILITY_IAM
-      Parameters:
-        - ParameterKey: Environment
-          ParameterValue: production
-        - ParameterKey: DatabasePassword
-          ParameterValue: ${{ Parameters.DatabasePassword }}
-        - ParameterKey: ECRRepositoryUri
-          ParameterValue: ${{ Parameters.ECRRepositoryUri }}
-      Tags:
-        - Key: Environment
-          Value: production
-        - Key: Application
-          Value: blog-app
-    Configuration:
-        Steps:
-            - Run: "Echo publshing to ecr"
+      no-execute-changeset: "0"
+      fail-on-empty-changeset: "1"
+      disable-rollback: "1"
+      termination-protection: "1"
+      timeout-in-minutes: "15"
+      monitor-timeout-in-minutes: "15"
+      tags: '[{"Key":"Environment","production":"MyValue1"},{"Key":"Application","Value":"blog-appM"}]'
 
   # Deploy Application
   DeployApplication:
@@ -166,16 +145,13 @@ Actions:
       - DeployInfrastructure
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Configuration:
       Steps:
-        - Name: DeployApplication
-          Commands:
-            - echo "Deploying application..."
-            - aws ecs update-service --cluster production-blog-cluster --service production-blog-backend-service --force-new-deployment
-            - aws ecs update-service --cluster production-blog-cluster --service production-blog-frontend-service --force-new-deployment
-            - echo "Application deployment completed"
+            - Run: echo "Deploying application..."
+            - Run: aws ecs update-service --cluster production-blog-cluster --service production-blog-backend-service --force-new-deployment
+            - Run: aws ecs update-service --cluster production-blog-cluster --service production-blog-frontend-service --force-new-deployment
+            - Run: echo "Application deployment completed"
 
   # Integration Tests
   IntegrationTests:
@@ -184,13 +160,10 @@ Actions:
       - DeployApplication
     Inputs:
       Sources:
-        - Name: Source
-          Repository: Source
-          Branch: main
+        - WorkflowSource
+    Configuration:
       Steps:
-        - Name: IntegrationTests
-          Commands:
-            - echo "Running integration tests..."
-            - pip install requests pytest
-            - python -m pytest tests/integration/ -v
-            - echo "Integration tests completed"
+            - Run: echo "Running integration tests..."
+            - Run: pip install requests pytest
+            - Run: python -m pytest tests/integration/ -v
+            - Run: echo "Integration tests completed"
