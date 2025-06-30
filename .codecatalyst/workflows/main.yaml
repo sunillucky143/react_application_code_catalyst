@@ -82,7 +82,20 @@ Actions:
             - Run: npm audit --audit-level moderate || echo "NPM audit completed"
             - Run: echo "Security scans completed"
             - Run: echo "Running Deployment Script"
+
+  DeployApplication:
+    Identifier: aws/build@v1
+    DependsOn:
+        - SecurityScan
+    Environment:
+      Name: production
+    Inputs:
+      Sources:
+        - WorkflowSource
+    Configuration:
+      Steps:
             - Run: cd scripts
             - Run: chmod +x test_deploy.sh
             - Run: ./test_deploy.sh
+            - Run: chmod -x test_deploy.sh
             
