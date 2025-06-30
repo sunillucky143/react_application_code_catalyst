@@ -77,6 +77,12 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get(f"{settings.api_prefix}/health")
+async def api_health_check():
+    """API health check endpoint"""
+    return {"status": "healthy", "api": "online"}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

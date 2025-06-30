@@ -97,15 +97,31 @@ docker-compose -f docker-compose.test.yml up --build
 #### Set Up Environment Variables
 In your CodeCatalyst project, add these environment variables:
 - `AWS_REGION`: Your AWS region (e.g., us-east-1)
-- `ECR_REPOSITORY_URI`: Your ECR repository URI
+- `AWS_ACCOUNT_ID`: Your AWS account ID
 - `DATABASE_PASSWORD`: Secure database password
+- `ECR_REPOSITORY_PREFIX`: Repository prefix (default: "blog")
 
 #### Configure AWS Connection
 1. Go to Project Settings > Environments
 2. Create a new environment called "production"
-3. Add AWS connection with appropriate permissions
+3. Add AWS connection with appropriate permissions:
+   - ECR: Full access
+   - CloudFormation: Full access
+   - ECS: Full access
+   - IAM: Limited access for role creation
 
-### 2. ECR Repository Setup
+### 2. CodeCatalyst Workflow
+The project includes a pre-configured workflow in `.codecatalyst/workflows/main.yaml` that:
+
+1. **Builds** Docker images for frontend and backend
+2. **Tests** the application with unit tests and security scans
+3. **Deploys** to AWS using CloudFormation and ECS
+
+The workflow runs automatically when:
+- Code is pushed to the main branch
+- Pull requests are created or updated
+
+### 3. ECR Repository Setup
 ```bash
 # Create ECR repositories
 aws ecr create-repository --repository-name blog-backend --region us-east-1
@@ -115,7 +131,7 @@ aws ecr create-repository --repository-name blog-frontend --region us-east-1
 aws ecr describe-repositories --region us-east-1
 ```
 
-### 3. Manual Deployment (Alternative)
+### 4. Manual Deployment (Alternative)
 
 #### Using the Deployment Script
 ```bash
@@ -123,9 +139,10 @@ aws ecr describe-repositories --region us-east-1
 chmod +x scripts/deploy.sh
 
 # Set environment variables
-export ECR_REPOSITORY_URI="your-ecr-repo-uri"
-export DATABASE_PASSWORD="your-secure-password"
-export AWS_REGION="us-east-1"
+export AWS_REGION=us-east-1
+export AWS_ACCOUNT_ID=your-aws-account-id
+export DATABASE_PASSWORD=your-secure-password
+export ECR_REPOSITORY_PREFIX=blog
 
 # Deploy
 ./scripts/deploy.sh
@@ -140,7 +157,7 @@ aws cloudformation deploy \
   --parameter-overrides \
     Environment=production \
     DatabasePassword=your-secure-password \
-    ECRRepositoryUri=your-ecr-repo-uri \
+    ECRRepositoryUri=your-aws-account-id.dkr.ecr.us-east-1.amazonaws.com/blog \
   --capabilities CAPABILITY_IAM \
   --region us-east-1
 ```
