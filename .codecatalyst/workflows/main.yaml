@@ -121,7 +121,6 @@ Actions:
     Identifier: aws/cfn-deploy@v1
     DependsOn:
       - PushToECR
-    Timeout: 15
     Environment:
       Name: production
     Inputs:
@@ -144,6 +143,8 @@ Actions:
     Identifier: aws/build@v1
     DependsOn:
       - DeployInfrastructure
+    Environment:
+      Name: production
     Inputs:
       Sources:
         - WorkflowSource
