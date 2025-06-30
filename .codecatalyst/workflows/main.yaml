@@ -83,7 +83,7 @@ Actions:
             - Run: echo "Security scans completed"
 
   DeployApplication:
-    Identifier: aws/build@v1
+    Identifier: aws/managed-test@v1
     DependsOn:
         - SecurityScan
     Environment:
