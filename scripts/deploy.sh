@@ -14,9 +14,9 @@ NC='\033[0m' # No Color
 # Configuration
 STACK_NAME="blog-app-stack"
 ENVIRONMENT=${ENVIRONMENT:-"production"}
-AWS_REGION=${AWS_REGION:-"us-east-1"}
+AWS_REGION=${AWS_REGION:-"us-west-2"}
 ECR_REPOSITORY_PREFIX=${ECR_REPOSITORY_PREFIX:-"blog"}
-DATABASE_PASSWORD=${DATABASE_PASSWORD:-""}
+DATABASE_PASSWORD=${DATABASE_PASSWORD:-"blogpassword"}
 
 # Function to print colored output
 print_status() {
@@ -85,7 +85,7 @@ build_and_push_images() {
     
     # Build backend image
     print_status "Building backend image..."
-    cd backend
+    cd ../backend
     docker build -t backend:latest .
     cd ..
     
@@ -151,7 +151,8 @@ deploy_infrastructure() {
                 ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD \
                 ParameterKey=BackendRepositoryUri,ParameterValue=$BACKEND_REPOSITORY_URI \
                 ParameterKey=FrontendRepositoryUri,ParameterValue=$FRONTEND_REPOSITORY_URI \
-            --capabilities CAPABILITY_IAM \
+            --capabilities CAPABILITY_NAMED_IAM \
+                CAPABILITY_IAM \
             --region $AWS_REGION
         
         # Wait for stack creation to complete
