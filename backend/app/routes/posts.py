@@ -1,36 +1,30 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Form
-from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
-from ..models.user import User
-from ..models.post import Post
 from ..schemas.post import PostCreate, PostUpdate, PostResponse, PostList
 from ..utils.auth import get_current_active_user
+from ..storage import posts, post_id_counter
 
 router = APIRouter(prefix="/posts", tags=["posts"])
-
 
 @router.get("/", response_model=PostList)
 def get_posts(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db=Depends(get_db)
 ):
     """Get all published posts with pagination"""
-    total = db.query(Post).filter(Post.is_published == True).count()
-    posts = (
-        db.query(Post)
-        .filter(Post.is_published == True)
-        .options(joinedload(Post.author))
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    # Filter published posts
+    published_posts = [post for post in posts.values() if post["is_published"]]
+    total = len(published_posts)
+    
+    # Apply pagination
+    paginated_posts = published_posts[skip:skip+limit]
     
     return PostList(
-        posts=posts,
+        posts=paginated_posts,
         total=total,
-        page=skip // limit + 1,
+        page=skip // limit + 1 if limit > 0 else 1,
         per_page=limit
     )
 
@@ -38,34 +32,35 @@ def get_posts(
 @router.post("/", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 def create_post(
     post: PostCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    current_user: dict = Depends(get_current_active_user),
+    db=Depends(get_db)
 ):
     """Create a new post (authenticated users only)"""
-    db_post = Post(
-        **post.dict(),
-        author_id=current_user.id
-    )
-    db.add(db_post)
-    db.commit()
-    db.refresh(db_post)
+    global post_id_counter
+    post_id_counter += 1
     
-    # Load the author relationship
-    db_post.author = current_user
-    return db_post
+    post_data = post.dict()
+    post_data["id"] = post_id_counter
+    post_data["author_id"] = current_user["id"]
+    post_data["author"] = {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "email": current_user["email"]
+    }
+    post_data["created_at"] = "2023-01-01T00:00:00"
+    post_data["updated_at"] = "2023-01-01T00:00:00"
+    
+    posts[post_id_counter] = post_data
+    
+    return post_data
 
 
 @router.get("/{post_id}", response_model=PostResponse)
-def get_post(post_id: int, db: Session = Depends(get_db)):
+def get_post(post_id: int, db=Depends(get_db)):
     """Get a specific post by ID"""
-    post = (
-        db.query(Post)
-        .filter(Post.id == post_id, Post.is_published == True)
-        .options(joinedload(Post.author))
-        .first()
-    )
+    post = posts.get(post_id)
     
-    if not post:
+    if not post or not post["is_published"]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Post not found"
@@ -78,19 +73,19 @@ def get_post(post_id: int, db: Session = Depends(get_db)):
 def update_post(
     post_id: int,
     post_update: PostUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    current_user: dict = Depends(get_current_active_user),
+    db=Depends(get_db)
 ):
     """Update a post (only the author can update)"""
-    db_post = db.query(Post).filter(Post.id == post_id).first()
-    
-    if not db_post:
+    if post_id not in posts:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Post not found"
         )
     
-    if db_post.author_id != current_user.id:
+    post = posts[post_id]
+    
+    if post["author_id"] != current_user["id"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this post"
@@ -99,38 +94,34 @@ def update_post(
     # Update only provided fields
     update_data = post_update.dict(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(db_post, field, value)
+        post[field] = value
     
-    db.commit()
-    db.refresh(db_post)
+    post["updated_at"] = "2023-01-01T00:00:00"
     
-    # Load the author relationship
-    db_post.author = current_user
-    return db_post
+    return post
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(
     post_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    current_user: dict = Depends(get_current_active_user),
+    db=Depends(get_db)
 ):
     """Delete a post (only the author can delete)"""
-    db_post = db.query(Post).filter(Post.id == post_id).first()
-    
-    if not db_post:
+    if post_id not in posts:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Post not found"
         )
     
-    if db_post.author_id != current_user.id:
+    post = posts[post_id]
+    
+    if post["author_id"] != current_user["id"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to delete this post"
         )
     
-    db.delete(db_post)
-    db.commit()
+    del posts[post_id]
     
-    return None 
+    return None

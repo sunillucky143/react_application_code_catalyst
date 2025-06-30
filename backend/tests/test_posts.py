@@ -1,44 +1,18 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 from app.main import app
-from app.database import get_db, Base
-from app.models.user import User
-from app.models.post import Post
-from app.utils.auth import get_password_hash
-
-
-# Create in-memory SQLite database for testing
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    """Override database dependency for testing"""
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
+from app.storage import users, posts, post_id_counter
 
 @pytest.fixture
 def client():
     """Test client fixture"""
-    Base.metadata.create_all(bind=engine)
+    # Clear the in-memory storage before each test
+    users.clear()
+    posts.clear()
+    global post_id_counter
+    post_id_counter = 0
     with TestClient(app) as c:
         yield c
-    Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
@@ -201,4 +175,4 @@ def test_posts_pagination(client, auth_headers):
     assert response.status_code == 200
     data = response.json()
     assert len(data["posts"]) == 5
-    assert data["page"] == 2 
+    assert data["page"] == 2

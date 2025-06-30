@@ -4,10 +4,9 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 from ..config import settings
 from ..database import get_db
-from ..models.user import User
+from ..storage import users
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -41,8 +40,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
+    db=Depends(get_db)
+) -> dict:
     """Get the current authenticated user"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -62,15 +61,15 @@ def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    user = db.query(User).filter(User.email == email).first()
+    user = users.get(email)
     if user is None:
         raise credentials_exception
     
     return user
 
 
-def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+def get_current_active_user(current_user: dict = Depends(get_current_user)) -> dict:
     """Get the current active user"""
-    if not current_user.is_active:
+    if not current_user["is_active"]:
         raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user 
+    return current_user
