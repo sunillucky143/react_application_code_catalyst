@@ -25,9 +25,9 @@ print_success() {
 }
 
 # Mock AWS environment variables
-export AWS_REGION="us-east-1"
-export AWS_ACCOUNT_ID="123456789012"
-export DATABASE_PASSWORD="test-password"
+export AWS_REGION="us-west-2"
+export AWS_ACCOUNT_ID="587210148146"
+export DATABASE_PASSWORD="blogpassword"
 
 # Test the build_and_push_images function
 test_build_and_push() {
