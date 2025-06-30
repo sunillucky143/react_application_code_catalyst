@@ -126,4 +126,4 @@ Actions:
     Configuration:
       Steps:
             - Run: cd scripts
-            - Run: ./scripts/test_deploy.sh
+            - Run: ./test_deploy.sh
