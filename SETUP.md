@@ -99,7 +99,6 @@ In your CodeCatalyst project, add these environment variables:
 - `AWS_REGION`: Your AWS region (e.g., us-east-1)
 - `AWS_ACCOUNT_ID`: Your AWS account ID
 - `DATABASE_PASSWORD`: Secure database password
-- `ECR_REPOSITORY_PREFIX`: Repository prefix (default: "blog")
 
 #### Configure AWS Connection
 1. Go to Project Settings > Environments
@@ -135,17 +134,20 @@ aws ecr describe-repositories --region us-east-1
 
 #### Using the Deployment Script
 ```bash
-# Make script executable
+# Make scripts executable
 chmod +x scripts/deploy.sh
+chmod +x scripts/test_deploy.sh
 
 # Set environment variables
 export AWS_REGION=us-east-1
 export AWS_ACCOUNT_ID=your-aws-account-id
 export DATABASE_PASSWORD=your-secure-password
-export ECR_REPOSITORY_PREFIX=blog
 
 # Deploy
 ./scripts/deploy.sh
+
+# Test deployment changes
+./scripts/test_deploy.sh
 ```
 
 #### Using AWS CLI Directly
@@ -157,7 +159,8 @@ aws cloudformation deploy \
   --parameter-overrides \
     Environment=production \
     DatabasePassword=your-secure-password \
-    ECRRepositoryUri=your-aws-account-id.dkr.ecr.us-east-1.amazonaws.com/blog \
+    BackendRepositoryUri=your-aws-account-id.dkr.ecr.us-east-1.amazonaws.com/blog-backend:latest \
+    FrontendRepositoryUri=your-aws-account-id.dkr.ecr.us-east-1.amazonaws.com/blog-frontend:latest \
   --capabilities CAPABILITY_IAM \
   --region us-east-1
 ```
