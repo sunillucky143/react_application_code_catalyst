@@ -96,4 +96,3 @@ Actions:
             - Run: cd scripts
             - Run: chmod +x test_deploy.sh
             - Run: ./test_deploy.sh
-            - Run: chmod -x test_deploy.sh
