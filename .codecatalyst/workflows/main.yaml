@@ -1,6 +1,6 @@
 SchemaVersion: 1.0
 
-Name: Blog-Application-CICD-Pipeline
+Name: Blog-Application-CICD-Pipeline1
 
 Triggers:
   - Type: Push
