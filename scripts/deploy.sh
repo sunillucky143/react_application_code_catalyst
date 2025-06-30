@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 STACK_NAME="blog-app-stack"
 ENVIRONMENT=${ENVIRONMENT:-"production"}
 AWS_REGION=${AWS_REGION:-"us-east-1"}
-ECR_REPOSITORY_URI=${ECR_REPOSITORY_URI:-""}
+ECR_REPOSITORY_PREFIX=${ECR_REPOSITORY_PREFIX:-"blog"}
 DATABASE_PASSWORD=${DATABASE_PASSWORD:-""}
 
 # Function to print colored output
@@ -48,14 +48,26 @@ check_prerequisites() {
     fi
     
     # Check if required environment variables are set
-    if [ -z "$ECR_REPOSITORY_URI" ]; then
-        print_error "ECR_REPOSITORY_URI environment variable is not set."
-        exit 1
-    fi
-    
     if [ -z "$DATABASE_PASSWORD" ]; then
         print_error "DATABASE_PASSWORD environment variable is not set."
         exit 1
+    fi
+    
+    # Get AWS account ID if not provided
+    if [ -z "$AWS_ACCOUNT_ID" ]; then
+        print_status "AWS_ACCOUNT_ID not set. Attempting to retrieve from AWS CLI..."
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        if [ -z "$AWS_ACCOUNT_ID" ]; then
+            print_error "Could not retrieve AWS account ID. Please set AWS_ACCOUNT_ID environment variable."
+            exit 1
+        fi
+        print_status "AWS account ID: $AWS_ACCOUNT_ID"
+    fi
+    
+    # Set ECR repository URI if not provided
+    if [ -z "$ECR_REPOSITORY_URI" ]; then
+        ECR_REPOSITORY_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_PREFIX}"
+        print_status "ECR repository URI set to: $ECR_REPOSITORY_URI"
     fi
     
     print_status "Prerequisites check passed."
@@ -66,20 +78,29 @@ build_and_push_images() {
     print_status "Building and pushing Docker images..."
     
     # Login to ECR
-    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+    print_status "Logging in to ECR..."
+    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+    
+    # Create ECR repositories if they don't exist
+    print_status "Creating ECR repositories if they don't exist..."
+    aws ecr describe-repositories --repository-names ${ECR_REPOSITORY_PREFIX}-backend --region $AWS_REGION || \
+    aws ecr create-repository --repository-name ${ECR_REPOSITORY_PREFIX}-backend --region $AWS_REGION
+    
+    aws ecr describe-repositories --repository-names ${ECR_REPOSITORY_PREFIX}-frontend --region $AWS_REGION || \
+    aws ecr create-repository --repository-name ${ECR_REPOSITORY_PREFIX}-frontend --region $AWS_REGION
     
     # Build and push backend image
     print_status "Building backend image..."
     cd backend
-    docker build -t $ECR_REPOSITORY_URI/backend:latest .
-    docker push $ECR_REPOSITORY_URI/backend:latest
+    docker build -t ${ECR_REPOSITORY_URI}-backend:latest .
+    docker push ${ECR_REPOSITORY_URI}-backend:latest
     cd ..
     
     # Build and push frontend image
     print_status "Building frontend image..."
     cd frontend
-    docker build -t $ECR_REPOSITORY_URI/frontend:latest .
-    docker push $ECR_REPOSITORY_URI/frontend:latest
+    docker build -t ${ECR_REPOSITORY_URI}-frontend:latest .
+    docker push ${ECR_REPOSITORY_URI}-frontend:latest
     cd ..
     
     print_status "Docker images built and pushed successfully."
@@ -92,7 +113,7 @@ deploy_infrastructure() {
     # Check if stack exists
     if aws cloudformation describe-stacks --stack-name $STACK_NAME --region $AWS_REGION &> /dev/null; then
         print_status "Stack exists. Updating..."
-        aws cloudformation update-stack \
+        CLOUDFORMATION_ERROR=$(aws cloudformation update-stack \
             --stack-name $STACK_NAME \
             --template-body file://infrastructure/cloudformation/main.yaml \
             --parameters \
@@ -100,10 +121,19 @@ deploy_infrastructure() {
                 ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD \
                 ParameterKey=ECRRepositoryUri,ParameterValue=$ECR_REPOSITORY_URI \
             --capabilities CAPABILITY_IAM \
-            --region $AWS_REGION
+            --region $AWS_REGION 2>&1 || echo $?)
         
-        # Wait for stack update to complete
-        aws cloudformation wait stack-update-complete --stack-name $STACK_NAME --region $AWS_REGION
+        # Check if no updates are to be performed
+        if [[ $CLOUDFORMATION_ERROR == *"No updates are to be performed"* ]]; then
+            print_status "No updates are to be performed on the stack."
+        elif [[ $CLOUDFORMATION_ERROR == *"error"* ]]; then
+            print_error "Failed to update CloudFormation stack: $CLOUDFORMATION_ERROR"
+            exit 1
+        else
+            # Wait for stack update to complete
+            print_status "Waiting for stack update to complete..."
+            aws cloudformation wait stack-update-complete --stack-name $STACK_NAME --region $AWS_REGION
+        fi
     else
         print_status "Stack does not exist. Creating..."
         aws cloudformation create-stack \
@@ -117,6 +147,7 @@ deploy_infrastructure() {
             --region $AWS_REGION
         
         # Wait for stack creation to complete
+        print_status "Waiting for stack creation to complete..."
         aws cloudformation wait stack-create-complete --stack-name $STACK_NAME --region $AWS_REGION
     fi
     
@@ -185,6 +216,38 @@ get_deployment_info() {
     echo ""
 }
 
+# Function to run health checks
+run_health_checks() {
+    print_status "Running health checks..."
+    
+    # Get ALB DNS name
+    ALB_DNS=$(aws cloudformation describe-stacks \
+        --stack-name $STACK_NAME \
+        --region $AWS_REGION \
+        --query 'Stacks[0].Outputs[?OutputKey==`ALBDNSName`].OutputValue' \
+        --output text)
+    
+    # Wait for services to be ready
+    print_status "Waiting for services to be ready (2 minutes)..."
+    sleep 120
+    
+    # Check frontend health
+    print_status "Checking frontend health..."
+    if curl -s -f "http://$ALB_DNS/health" > /dev/null; then
+        print_status "Frontend health check passed."
+    else
+        print_warning "Frontend health check failed. The application might still be starting up."
+    fi
+    
+    # Check backend health
+    print_status "Checking backend health..."
+    if curl -s -f "http://$ALB_DNS/api/health" > /dev/null; then
+        print_status "Backend health check passed."
+    else
+        print_warning "Backend health check failed. The API might still be starting up."
+    fi
+}
+
 # Main deployment function
 main() {
     print_status "Starting deployment process..."
@@ -193,6 +256,7 @@ main() {
     build_and_push_images
     deploy_infrastructure
     deploy_application
+    run_health_checks
     get_deployment_info
     
     print_status "Deployment completed successfully!"
@@ -215,17 +279,23 @@ case "${1:-deploy}" in
         check_prerequisites
         deploy_application
         ;;
+    "health")
+        check_prerequisites
+        run_health_checks
+        ;;
     "info")
+        check_prerequisites
         get_deployment_info
         ;;
     *)
-        echo "Usage: $0 {deploy|build|infrastructure|application|info}"
+        echo "Usage: $0 {deploy|build|infrastructure|application|health|info}"
         echo ""
         echo "Commands:"
         echo "  deploy         - Full deployment (default)"
         echo "  build          - Build and push Docker images only"
         echo "  infrastructure - Deploy infrastructure only"
         echo "  application    - Deploy application only"
+        echo "  health         - Run health checks"
         echo "  info           - Show deployment information"
         exit 1
         ;;
