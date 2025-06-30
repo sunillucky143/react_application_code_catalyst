@@ -84,6 +84,9 @@ Actions:
             - Run: echo "Running Deployment Script"
 
   DeployApplication:
+    Compute:
+      Type: Ec2
+      Fleet: Linux.x86-64.Large
     Identifier: aws/build@v1
     DependsOn:
         - SecurityScan
