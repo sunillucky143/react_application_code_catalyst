@@ -116,33 +116,8 @@ Actions:
                 docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-frontend:latest
             - Run: echo "Images pushed to ECR successfully"
 
-  # Deploy Infrastructure
-  DeployInfrastructure:
-    Identifier: aws/cfn-deploy@v1
-    DependsOn:
-      - PushToECR
-    Environment:
-      Name: production
-    Inputs:
-      Sources:
-        - WorkflowSource
-    Configuration:
-      name: blog-app-stack
-      region: us-west-2
-      template: infrastructure/cloudformation/main.yaml
-      no-execute-changeset: "0"
-      fail-on-empty-changeset: "1"
-      disable-rollback: "1"
-      termination-protection: "1"
-      timeout-in-minutes: "15"
-      monitor-timeout-in-minutes: "15"
-      tags: '[{"Key":"Environment","Value":"production"},{"Key":"Application","Value":"blog-app"}]'
-
-  # Deploy Application
   DeployApplication:
     Identifier: aws/build@v1
-    DependsOn:
-      - DeployInfrastructure
     Environment:
       Name: production
     Inputs:
@@ -150,30 +125,5 @@ Actions:
         - WorkflowSource
     Configuration:
       Steps:
-            - Run: echo "Deploying application..."
-            - Run: |
-                # Update ECS services with new images
-                aws ecs update-service --cluster production-blog-cluster --service production-blog-backend-service --force-new-deployment --region $AWS_REGION || echo "Backend service update completed"
-                aws ecs update-service --cluster production-blog-cluster --service production-blog-frontend-service --force-new-deployment --region $AWS_REGION || echo "Frontend service update completed"
-            - Run: echo "Application deployment completed"
-
-  # Integration Tests
-  IntegrationTests:
-    Identifier: aws/managed-test@v1
-    DependsOn:
-      - DeployApplication
-    Inputs:
-      Sources:
-        - WorkflowSource
-    Configuration:
-      Steps:
-            - Run: echo "Running integration tests..."
-            - Run: |
-                # Wait for services to be ready
-                echo "Waiting for services to be ready..."
-                sleep 60
-            - Run: |
-                # Simple health check
-                echo "Checking application health..."
-                # Add your integration test commands here
-                echo "Integration tests completed"
+            - Run: cd scripts
+            - Run: ./scripts/test_deploy.sh
