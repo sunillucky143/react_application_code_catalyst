@@ -1,24 +1,4 @@
 services:
-  # PostgreSQL Database
-  db:
-    image: postgres:15-alpine
-    container_name: blog_db
-    environment:
-      POSTGRES_DB: blogdb
-      POSTGRES_USER: bloguser
-      POSTGRES_PASSWORD: blogpassword
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bloguser -d blogdb"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - blog_network
-
   # FastAPI Backend
   backend:
     build:
@@ -26,7 +6,6 @@ services:
       dockerfile: Dockerfile
     container_name: blog_backend
     environment:
-      - DATABASE_URL=postgresql://bloguser:blogpassword@db:5432/blogdb
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_ALGORITHM=HS256
       - JWT_EXPIRATION=3600
@@ -35,9 +14,6 @@ services:
       - API_PREFIX=/api
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       - ./backend:/app
     networks:
@@ -55,14 +31,11 @@ services:
       - REACT_APP_ENVIRONMENT=development
     ports:
       - "3000:80"
-    depends_on:
-      - backend
     networks:
       - blog_network
     restart: unless-stopped
 
 volumes:
-  postgres_data:
 
 networks:
   blog_network:

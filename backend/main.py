@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import os
 from app.config import settings
-from app.database import engine, Base
+from app.database import Base
 from app.routes import auth_router, posts_router, users_router
 
 
@@ -13,12 +13,11 @@ from app.routes import auth_router, posts_router, users_router
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
-    print("Creating database tables...")
-    Base.metadata.create_all(bind=engine)
+    print("Starting application...")
     
     # Create uploads directory if it doesn't exist
     os.makedirs("uploads", exist_ok=True)
-    print("Database tables created successfully!")
+    print("Application started successfully!")
     
     yield
     
@@ -85,4 +84,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=settings.debug
-    ) 
+    )
