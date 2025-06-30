@@ -143,7 +143,6 @@ docker-compose -f docker-compose.test.yml up --build
    - `AWS_REGION`: Your AWS region (e.g., us-east-1)
    - `AWS_ACCOUNT_ID`: Your AWS account ID
    - `DATABASE_PASSWORD`: Secure database password
-   - `ECR_REPOSITORY_URI`: Your ECR repository URI
 
 ### Deployment Process
 
@@ -158,13 +157,33 @@ The CodeCatalyst workflow (`/.codecatalyst/workflows/main.yaml`) includes:
    - Performs security scanning
 
 3. **Push to ECR Stage**:
-   - Creates ECR repositories if they don't exist
+   - Creates ECR repositories if they don't exist (blog-backend and blog-frontend)
    - Tags and pushes Docker images to ECR
 
 4. **Deploy Stage**:
    - Deploys CloudFormation infrastructure
    - Updates ECS services with new container images
    - Runs integration tests
+
+### Code Catalyst Integration
+
+The deployment script has been optimized for AWS Code Catalyst with the following features:
+
+1. **Fixed Repository Names**:
+   - Uses standardized repository names: `blog-backend` and `blog-frontend`
+   - Simplifies integration with Code Catalyst workflows
+
+2. **Separate Repository URIs**:
+   - CloudFormation template now accepts separate parameters for backend and frontend repositories
+   - Provides more flexibility and clarity in deployment
+
+3. **Streamlined Image Building**:
+   - Builds images with standard tags (`backend:latest` and `frontend:latest`)
+   - Tags and pushes to ECR in separate steps for better visibility
+
+4. **Testing Support**:
+   - Includes a test script (`scripts/test_deploy.sh`) to verify deployment changes
+   - Ensures compatibility with Code Catalyst workflows
 
 ### Manual Deployment
 
@@ -175,7 +194,6 @@ You can also deploy manually using the provided script:
 export AWS_REGION=us-east-1
 export AWS_ACCOUNT_ID=123456789012
 export DATABASE_PASSWORD=your-secure-password
-export ECR_REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
 # Run the deployment script
 ./scripts/deploy.sh

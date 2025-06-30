@@ -64,12 +64,6 @@ check_prerequisites() {
         print_status "AWS account ID: $AWS_ACCOUNT_ID"
     fi
     
-    # Set ECR repository URI if not provided
-    if [ -z "$ECR_REPOSITORY_URI" ]; then
-        ECR_REPOSITORY_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_PREFIX}"
-        print_status "ECR repository URI set to: $ECR_REPOSITORY_URI"
-    fi
-    
     print_status "Prerequisites check passed."
 }
 
@@ -77,31 +71,39 @@ check_prerequisites() {
 build_and_push_images() {
     print_status "Building and pushing Docker images..."
     
-    # Login to ECR
-    print_status "Logging in to ECR..."
-    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-    
     # Create ECR repositories if they don't exist
     print_status "Creating ECR repositories if they don't exist..."
-    aws ecr describe-repositories --repository-names ${ECR_REPOSITORY_PREFIX}-backend --region $AWS_REGION || \
-    aws ecr create-repository --repository-name ${ECR_REPOSITORY_PREFIX}-backend --region $AWS_REGION
+    aws ecr describe-repositories --repository-names blog-backend --region $AWS_REGION || \
+    aws ecr create-repository --repository-name blog-backend --region $AWS_REGION
     
-    aws ecr describe-repositories --repository-names ${ECR_REPOSITORY_PREFIX}-frontend --region $AWS_REGION || \
-    aws ecr create-repository --repository-name ${ECR_REPOSITORY_PREFIX}-frontend --region $AWS_REGION
+    aws ecr describe-repositories --repository-names blog-frontend --region $AWS_REGION || \
+    aws ecr create-repository --repository-name blog-frontend --region $AWS_REGION
     
-    # Build and push backend image
+    # Get ECR login token
+    print_status "Logging in to ECR..."
+    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+    
+    # Build backend image
     print_status "Building backend image..."
     cd backend
-    docker build -t ${ECR_REPOSITORY_URI}-backend:latest .
-    docker push ${ECR_REPOSITORY_URI}-backend:latest
+    docker build -t backend:latest .
     cd ..
     
-    # Build and push frontend image
+    # Build frontend image
     print_status "Building frontend image..."
     cd frontend
-    docker build -t ${ECR_REPOSITORY_URI}-frontend:latest .
-    docker push ${ECR_REPOSITORY_URI}-frontend:latest
+    docker build -t frontend:latest .
     cd ..
+    
+    # Tag and push backend image
+    print_status "Tagging and pushing backend image..."
+    docker tag backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-backend:latest
+    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-backend:latest
+    
+    # Tag and push frontend image
+    print_status "Tagging and pushing frontend image..."
+    docker tag frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-frontend:latest
+    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-frontend:latest
     
     print_status "Docker images built and pushed successfully."
 }
@@ -109,6 +111,10 @@ build_and_push_images() {
 # Function to deploy infrastructure
 deploy_infrastructure() {
     print_status "Deploying infrastructure using CloudFormation..."
+    
+    # Set ECR repository URIs for backend and frontend
+    BACKEND_REPOSITORY_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-backend"
+    FRONTEND_REPOSITORY_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-frontend"
     
     # Check if stack exists
     if aws cloudformation describe-stacks --stack-name $STACK_NAME --region $AWS_REGION &> /dev/null; then
@@ -119,7 +125,8 @@ deploy_infrastructure() {
             --parameters \
                 ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
                 ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD \
-                ParameterKey=ECRRepositoryUri,ParameterValue=$ECR_REPOSITORY_URI \
+                ParameterKey=BackendRepositoryUri,ParameterValue=$BACKEND_REPOSITORY_URI \
+                ParameterKey=FrontendRepositoryUri,ParameterValue=$FRONTEND_REPOSITORY_URI \
             --capabilities CAPABILITY_IAM \
             --region $AWS_REGION 2>&1 || echo $?)
         
@@ -142,7 +149,8 @@ deploy_infrastructure() {
             --parameters \
                 ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
                 ParameterKey=DatabasePassword,ParameterValue=$DATABASE_PASSWORD \
-                ParameterKey=ECRRepositoryUri,ParameterValue=$ECR_REPOSITORY_URI \
+                ParameterKey=BackendRepositoryUri,ParameterValue=$BACKEND_REPOSITORY_URI \
+                ParameterKey=FrontendRepositoryUri,ParameterValue=$FRONTEND_REPOSITORY_URI \
             --capabilities CAPABILITY_IAM \
             --region $AWS_REGION
         

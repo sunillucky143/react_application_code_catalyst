@@ -51,7 +51,16 @@ Parameters:
   
   ECRRepositoryUri:
     Type: String
-    Description: ECR repository URI for container images
+    Description: ECR repository URI for container images (deprecated)
+    Default: ""
+  
+  BackendRepositoryUri:
+    Type: String
+    Description: ECR repository URI for backend container image
+  
+  FrontendRepositoryUri:
+    Type: String
+    Description: ECR repository URI for frontend container image
   
   DomainName:
     Type: String
@@ -389,7 +398,7 @@ Resources:
       TaskRoleArn: !GetAtt ECSTaskRole.Arn
       ContainerDefinitions:
         - Name: backend
-          Image: !Sub '${ECRRepositoryUri}/backend:latest'
+          Image: !Ref BackendRepositoryUri
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp
@@ -438,7 +447,7 @@ Resources:
       TaskRoleArn: !GetAtt ECSTaskRole.Arn
       ContainerDefinitions:
         - Name: frontend
-          Image: !Sub '${ECRRepositoryUri}/frontend:latest'
+          Image: !Ref FrontendRepositoryUri
           PortMappings:
             - ContainerPort: 80
               Protocol: tcp
