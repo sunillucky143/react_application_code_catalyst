@@ -82,42 +82,10 @@ Actions:
             - Run: npm audit --audit-level moderate || echo "NPM audit completed"
             - Run: echo "Security scans completed"
 
-  # Push to ECR
-  PushToECR:
-    Identifier: aws/build@v1
-    DependsOn:
-      - BuildBackend
-      - BuildFrontend
-      - TestBackend
-      - TestFrontend
-    Inputs:
-      Sources:
-        - WorkflowSource
-    Configuration:
-      Steps:
-            - Run: echo "Setting up ECR repository..."
-            - Run: |
-                # Create ECR repositories if they don't exist
-                aws ecr describe-repositories --repository-names blog-backend --region $AWS_REGION || \
-                aws ecr create-repository --repository-name blog-backend --region $AWS_REGION
-                aws ecr describe-repositories --repository-names blog-frontend --region $AWS_REGION || \
-                aws ecr create-repository --repository-name blog-frontend --region $AWS_REGION
-            - Run: echo "Pushing images to ECR..."
-            - Run: |
-                # Get ECR login token
-                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-            - Run: |
-                # Tag and push backend image
-                docker tag backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-backend:latest
-                docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-backend:latest
-            - Run: |
-                # Tag and push frontend image
-                docker tag frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-frontend:latest
-                docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/blog-frontend:latest
-            - Run: echo "Images pushed to ECR successfully"
-
   DeployApplication:
     Identifier: aws/build@v1
+    DependsOn:
+        - SecurityScan
     Environment:
       Name: production
     Inputs:
